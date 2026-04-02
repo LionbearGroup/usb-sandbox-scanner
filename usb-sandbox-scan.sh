@@ -12,7 +12,7 @@ MOUNT_POINT="/mnt/usb-sandbox"
 LOG_DIR="/var/log/usb-sandbox"
 REPORT_DIR="/var/log/usb-sandbox/reports"
 VIRUSTOTAL_API_KEY="${VIRUSTOTAL_API_KEY:-}"  # Opcional
-NOTIFY_USER="${SUDO_USER:-$(logname 2>/dev/null || echo root)}"
+NOTIFY_USER="joao"
 MAX_FILE_SIZE_MB=50                      # Máx por arquivo para VirusTotal
 
 # Cores para output no terminal
@@ -35,11 +35,28 @@ notify() {
     local body="$2"
     local urgency="${3:-normal}"   # low | normal | critical
 
-    # Tenta notificação de desktop (requer display)
-    if command -v notify-send &>/dev/null && [ -n "${DISPLAY:-}" ]; then
-        sudo -u "$NOTIFY_USER" \
-            DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u "$NOTIFY_USER")/bus" \
-            notify-send --urgency="$urgency" --app-name="USB Sandbox" "$title" "$body" 2>/dev/null || true
+    # Envia notificação desktop mesmo quando executado pelo systemd/udev
+    # (sem $DISPLAY/$WAYLAND_DISPLAY no ambiente)
+    if command -v notify-send &>/dev/null; then
+        local uid
+        uid=$(id -u "$NOTIFY_USER" 2>/dev/null) || uid=""
+
+        if [ -n "$uid" ] && [ -S "/run/user/${uid}/bus" ]; then
+            local env_args=(
+                "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/${uid}/bus"
+            )
+
+            # Detecta DISPLAY/WAYLAND_DISPLAY da sessão activa do utilizador
+            local display wayland_display
+            display=$(grep -z '^DISPLAY=' /proc/$(pgrep -u "$uid" gnome-session | head -1)/environ 2>/dev/null | tr -d '\0') || true
+            wayland_display=$(grep -z '^WAYLAND_DISPLAY=' /proc/$(pgrep -u "$uid" gnome-session | head -1)/environ 2>/dev/null | tr -d '\0') || true
+
+            [ -n "$display" ] && env_args+=("$display")
+            [ -n "$wayland_display" ] && env_args+=("$wayland_display")
+
+            sudo -u "$NOTIFY_USER" env "${env_args[@]}" \
+                notify-send --urgency="$urgency" --app-name="USB Sandbox" "$title" "$body" 2>/dev/null || true
+        fi
     fi
 
     log "NOTIFY" "$title — $body"
