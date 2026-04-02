@@ -1,0 +1,29 @@
+# =============================================================================
+# /etc/udev/rules.d/99-usb-sandbox.rules
+# Dispara varredura automática ao inserir qualquer pendrive USB
+# =============================================================================
+#
+# Correções vs versão original:
+#   - sd[a-z] em vez de sd[b-z] (pendrives podem ser sda)
+#   - Bloqueia udisks2 auto-mount (UDISKS_AUTO=0) durante o scan
+#   - Usa SYSTEMD_WANTS em vez de RUN (udev mata RUN após ~5s)
+
+# --- Partições USB (ex: sda1, sdb1, sdc2, ...) ---
+ACTION=="add", \
+SUBSYSTEM=="block", \
+ENV{ID_BUS}=="usb", \
+KERNEL=="sd[a-z][0-9]*", \
+ENV{UDISKS_AUTO}="0", \
+TAG+="systemd", \
+ENV{SYSTEMD_WANTS}="usb-sandbox@%k.service"
+
+# --- Discos USB sem tabela de partição (ex: sda, sdb formatado directo) ---
+ACTION=="add", \
+SUBSYSTEM=="block", \
+ENV{ID_BUS}=="usb", \
+KERNEL=="sd[a-z]", \
+ENV{DEVTYPE}=="disk", \
+ENV{ID_FS_TYPE}!="", \
+ENV{UDISKS_AUTO}="0", \
+TAG+="systemd", \
+ENV{SYSTEMD_WANTS}="usb-sandbox@%k.service"
